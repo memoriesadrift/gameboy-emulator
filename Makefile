@@ -5,7 +5,12 @@ OUT_DIR = build
 SRC_DIR = src
 O_FILES = $(OUT_DIR)/main.o $(OUT_DIR)/test.o $(OUT_DIR)/registers.o $(OUT_DIR)/cpu.o
 
-all: $(O_FILES)
+$(PHONY): test
+test: compile
+	./$(OBJ)
+
+$(PHONY): compile
+compile: $(O_FILES)
 	$(CC) $(CFLAGS) $(O_FILES) -o $(OBJ) -lm
 
 $(OUT_DIR)/main.o: $(SRC_DIR)/main.c
@@ -20,14 +25,12 @@ $(OUT_DIR)/cpu.o: $(SRC_DIR)/cpu.c
 $(OUT_DIR)/test.o: $(SRC_DIR)/test.c
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/test.c -o $(OUT_DIR)/test.o
 
+$(PHONY): clean
 clean:
 	rm -f $(OUT_DIR)/*.o
+	rm $(OBJ)
 
-test:
-	make
-	make clean
-	./$(OBJ)
-
+$(PHONY): exec
 exec:
 	make
 	./$(OBJ)

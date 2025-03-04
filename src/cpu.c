@@ -9,7 +9,8 @@
 // TODO [30.4.23]: Make CPU_step load next byte when necessary and ONLY once per step
 // TODO [30.4.23]: STOP just stops execution atm, should it do something else?
 // TODO [7.5.23]: Check for correctness of overflows in ADD, ADC, SUB, SBC etc.
-// TODO [20.5.23]: When refactoring CPU PC handling, make sure JP, JR are updated -- atm they rely on CPU_step adding 1 to pc if no jump occurs.
+// TODO [6.7.23]: Implement LD SP instructions
+// TODO [18.1.25]: Implement HALT, EI, DI, rework STOP
 
 void CPU_dump(CPU *cpu) {
     printf("==== CPU DUMP ====\n");
@@ -30,14 +31,31 @@ void CPU_dump(CPU *cpu) {
     printf("C: %d\n", Registers_get_carry_flag(&cpu->registers));
 
     printf("=== Reading ix ===\n");
-    printf("%x\n", Memory_Bus_read_bytes(&cpu->bus, cpu->pc));
+    printf("%x\n", Memory_Bus_read_u8(&cpu->bus, cpu->pc));
     printf("==================\n");
     printf("\n");
 }
 
-uint8_t Memory_Bus_read_bytes(Memory_Bus *bus, uint16_t address) {
+uint8_t Memory_Bus_read_u8(Memory_Bus *bus, uint16_t address) {
   return bus->memory[address];
 }
+
+int8_t Memory_Bus_read_r8(Memory_Bus *bus, uint16_t address) {
+  return bus->memory[address];
+}
+
+uint16_t Memory_Bus_read_u16(Memory_Bus *bus, uint16_t address) {
+    uint16_t next_byte = Memory_Bus_read_u8(bus, address);
+    uint16_t second_next_byte = Memory_Bus_read_u8(bus, address + 1);
+
+    return (second_next_byte << 8) | next_byte;
+}
+
+void Memory_Bus_write_u8(Memory_Bus *bus, uint16_t address, uint8_t value) {
+  bus->memory[address] = value;
+}
+
+void Memory_Bus_write_u16(Memory_Bus *bus, uint16_t address, uint16_t value);
 
 // utility function
 uint8_t CPU_get_reg_value_by_name(CPU *cpu, Register_Name r) {
@@ -58,6 +76,7 @@ uint8_t CPU_get_reg_value_by_name(CPU *cpu, Register_Name r) {
       return cpu->registers.h;
     case L:
       return cpu->registers.l;
+      // FIXME: Remove these paths
     case AF:
       return Registers_get_af(&cpu->registers);
     case BC:
@@ -66,6 +85,21 @@ uint8_t CPU_get_reg_value_by_name(CPU *cpu, Register_Name r) {
       return Registers_get_de(&cpu->registers);
     case HL:
       return Registers_get_hl(&cpu->registers);
+  }
+}
+
+uint16_t CPU_get_combo_reg_value_by_name(CPU *cpu, Register_Name r) {
+  switch (r) {
+    case AF:
+      return Registers_get_af(&cpu->registers);
+    case BC:
+      return Registers_get_bc(&cpu->registers);
+    case DE:
+      return Registers_get_de(&cpu->registers);
+    case HL:
+      return Registers_get_hl(&cpu->registers);
+    default:
+      return 0;
   }
 }
 
@@ -96,6 +130,13 @@ void CPU_set_reg_value_by_name(CPU *cpu, Register_Name r, uint8_t to) {
     case L:
       cpu->registers.l = to;
       break;
+    default:
+      break;
+  }
+}
+
+void CPU_set_combo_reg_value_by_name(CPU *cpu, Register_Name r, uint16_t to) {
+  switch (r) {
     case AF:
       Registers_set_af(&cpu->registers, to);
       break;
@@ -107,6 +148,8 @@ void CPU_set_reg_value_by_name(CPU *cpu, Register_Name r, uint8_t to) {
       break;
     case HL:
       Registers_set_hl(&cpu->registers, to);
+      break;
+    default:
       break;
   }
 }
@@ -514,16 +557,59 @@ void CPU_jp(CPU *cpu, uint16_t to, uint8_t jump) {
   if (jump) {
     cpu->pc = to;
   } else {
-    (cpu->pc) += 2;
+    // If no jump, skip the JP ix and the n16 ix data
+    (cpu->pc) += 3;
   }
 }
 
+// FIXME: Do we need to check for illegal jumps or are illegal jumps UB?
 void CPU_jr(CPU *cpu, int8_t by, uint8_t jump) {
   if (jump) {
     cpu->pc += by;
   } else {
-    (cpu->pc) += 1;
+    // If no jump, skip the JR ix and the r8 ix data
+    (cpu->pc) += 2;
   }
+}
+
+void CPU_ld(
+    CPU* cpu,
+    Register_Name reg,
+    uint8_t n8,
+    uint16_t n16,
+    uint8_t load_into_n16,
+    uint8_t load_into_sp
+  ) {
+  /*
+  printf("======= DEBUG =======\n");
+  printf("LD Params\n");
+  printf("reg: %d\n", reg);
+  printf("n8: %x\n", n8);
+  printf("n16: %d\n", n16);
+  printf("load_into_n16: %d\n", load_into_n16);
+  printf("load_into_sp: %d\n", load_into_sp);
+  printf("=====================\n");
+  */
+
+  // Load into (n16)
+  if (load_into_n16 > 0) {
+    Memory_Bus_write_u8(&cpu->bus, n16, n8);
+    return;
+  }
+
+  // Load into SP
+  if (load_into_sp > 0) {
+    // TODO: implement
+  }
+
+  // Load 16 bit value
+  if (Registers_is_16_bit_register(reg) > 0) {
+    CPU_set_combo_reg_value_by_name(cpu, reg, n16);
+    return;
+  }
+
+  // LD r8, d8 / r8 / ...
+  CPU_set_reg_value_by_name(cpu, reg, n8);
 }
 
 // utility function kinda
@@ -586,6 +672,10 @@ uint8_t CPU_execute(CPU *cpu, CPU_Instruction ix, CPU_OP_Params params) {
     case CPL:
       CPU_cpl(cpu, params.reg);
       break;
+    case LD:
+      CPU_ld(cpu, params.reg, params.n8, params.n16, params.load_into_n16, params.load_into_sp);
+      break;
+    // 2 byte ixs
     case BIT:
       CPU_bit(cpu, params.reg, params.u3);
       break;
@@ -637,10 +727,9 @@ uint8_t CPU_execute(CPU *cpu, CPU_Instruction ix, CPU_OP_Params params) {
 CPU_Instruction CPU_Instruction_from_ix_byte(CPU *cpu, uint8_t byte) {
   uint8_t next;
   if (byte == 0xCB) {
-    next = Memory_Bus_read_bytes(&cpu->bus, cpu->pc + 1);
+    next = Memory_Bus_read_u8(&cpu->bus, cpu->pc + 1);
   }
 
-  // TODO: Implement LD
   switch (byte) {
     case 0x00:
       return NOP;
@@ -818,18 +907,55 @@ CPU_Instruction CPU_Instruction_from_ix_byte(CPU *cpu, uint8_t byte) {
     case 0xDA:
     case 0xE9:
       return JP;
+    case 0x01:
+    case 0x02:
+    case 0x06:
+    case 0x08:
+    case 0x0A:
+    case 0x0E:
+    case 0x11:
+    case 0x12:
+    case 0x16:
+    case 0x1A:
+    case 0x1E:
+    case 0x21:
+    case 0x22:
+    case 0x26:
+    case 0x2A:
+    case 0x2E:
+    case 0x31:
+    case 0x32:
+    case 0x36:
+    case 0x3A:
+    case 0x3E:
+    case 0xE0:
+    case 0xE2:
+    case 0xEA:
+    case 0xF0:
+    case 0xF2:
+    case 0xF8:
+    case 0xF9:
+    case 0xFA:
+      return LD;
     default:
+      // LD range 0x40 to 0x7F (skipping HALT)
+      if (
+        (byte >= 0x40 && byte <= 0x75) || (byte >= 0x77 && byte <= 0x7F)
+      ) {
+        return LD;
+      }
+
       return NOP;
   }
 }
 
-CPU_OP_Params CPU_OP_Params_from_by_ix_byte(CPU *cpu, CPU_Instruction ix, uint8_t ix_byte) {
+CPU_OP_Params CPU_OP_Params_by_ix_byte(CPU *cpu, CPU_Instruction ix, uint8_t ix_byte) {
   uint8_t lower_nibble, upper_nibble;
   CPU_OP_Params params = {};
 
   // if it is a prefix ix, take next byte
   if (ix_byte == 0xCB) {
-    uint8_t next_byte = Memory_Bus_read_bytes(&cpu->bus, cpu->pc + 1);
+    uint8_t next_byte = Memory_Bus_read_u8(&cpu->bus, cpu->pc + 1);
     lower_nibble = next_byte & (0b00001111);
     upper_nibble = (next_byte & (0b11110000)) >> 4;
   } else {
@@ -837,19 +963,264 @@ CPU_OP_Params CPU_OP_Params_from_by_ix_byte(CPU *cpu, CPU_Instruction ix, uint8_
     upper_nibble = (ix_byte & (0b11110000)) >> 4;
   }
 
-  // if it's a jump ix, read the 16 bit value
-  // 0xE9 = jp HL, so skip reading data if it's that one
-  if (ix == JP && ix_byte != 0xE9) {
-    // 0xE9 == JP HL
-    uint16_t next_byte = Memory_Bus_read_bytes(&cpu->bus, cpu->pc + 1);
-    uint16_t second_next_byte = Memory_Bus_read_bytes(&cpu->bus, cpu->pc + 2);
-
-    params.n16 = (second_next_byte << 8) | next_byte;
+  // Read offset if it's JR
+  // FIXME: move to JR handling
+  if (ix == JR) {
+    params.r8 = Memory_Bus_read_u8(&cpu->bus, cpu->pc + 1);
   }
 
-  // Read offset if it's JR
-  if (ix == JR) {
-    params.r8 = Memory_Bus_read_bytes(&cpu->bus, cpu->pc + 1);
+  // LD instruction handling
+  if (ix == LD) {
+    // LD r8, d8
+    if (
+        upper_nibble >= 0x0 && upper_nibble <= 0x3 &&
+        (lower_nibble == 0x6 || lower_nibble == 0xE)
+      ) {
+      // d8
+      params.n8 = Memory_Bus_read_u8(&cpu->bus, cpu->pc + 1);
+
+      // r8
+      switch (upper_nibble) {
+        case 0x0:
+          if (lower_nibble == 0x6) {
+            params.reg = B;
+          } else {
+            params.reg = C;
+          }
+          break;
+        case 0x1:
+          if (lower_nibble == 0x6) {
+            params.reg = D;
+          } else {
+            params.reg = E;
+          }
+          break;
+        case 0x2:
+          if (lower_nibble == 0x6) {
+            params.reg = H;
+          } else {
+            params.reg = L;
+          }
+          break;
+        case 0x3:
+          if (lower_nibble == 0x6) {
+	    params.n16 = CPU_get_combo_reg_value_by_name(cpu, HL);
+	    params.load_into_n16 = 1;
+          } else {
+            params.reg = A;
+          }
+          break;
+      }
+    }
+
+    // LD r8, r8
+    // treat the register data as if it were n8
+    if (
+        ix_byte >= 0x40 && ix_byte <= 0x7F &&
+        ix_byte != 0x76 // extra check to not run for HALT
+        ) {
+      // reg = desttination register
+      switch (upper_nibble) {
+        case 0x4:
+          if (lower_nibble < 0x8) {
+            params.reg = B;
+          } else {
+            params.reg = C;
+          }
+          break;
+        case 0x5:
+          if (lower_nibble < 0x8) {
+            params.reg = D;
+          } else {
+            params.reg = E;
+          }
+          break;
+        case 0x6:
+          if (lower_nibble < 0x8) {
+            params.reg = H;
+          } else {
+            params.reg = L;
+          }
+          break;
+        case 0x7:
+          if (lower_nibble < 0x8) {
+	    params.n16 = CPU_get_combo_reg_value_by_name(cpu, HL);
+	    params.load_into_n16 = 1;
+          } else {
+            params.reg = A;
+          }
+          break;
+      }
+
+      // LD r8, (HL)
+      // LD (HL), r8
+      switch (lower_nibble) {
+        case 0x0:
+        case 0x8:
+          params.n8 = CPU_get_reg_value_by_name(cpu, B);
+          break;
+        case 0x1:
+        case 0x9:
+          params.n8 = CPU_get_reg_value_by_name(cpu, C);
+          break;
+        case 0x2:
+        case 0xA:
+          params.n8 = CPU_get_reg_value_by_name(cpu, D);
+          break;
+        case 0x3:
+        case 0xB:
+          params.n8 = CPU_get_reg_value_by_name(cpu, E);
+          break;
+        case 0x4:
+        case 0xC:
+          params.n8 = CPU_get_reg_value_by_name(cpu, H);
+          break;
+        case 0x5:
+        case 0xD:
+          params.n8 = CPU_get_reg_value_by_name(cpu, L);
+          break;
+        case 0x7:
+        case 0xF:
+          params.n8 = CPU_get_reg_value_by_name(cpu, A);
+          break;
+        // LD r8, (HL)
+        case 0x6:
+          // HALT ix
+          if (lower_nibble == 0x7) {
+            break;
+          }
+	  params.n8 = Memory_Bus_read_u8(
+	      &cpu->bus, 
+	      CPU_get_combo_reg_value_by_name(cpu, HL)
+	    );
+        case 0xE:
+          params.n8 = Memory_Bus_read_u8(
+	      &cpu->bus, 
+	      CPU_get_combo_reg_value_by_name(cpu, HL)
+	  );
+          break;
+      }
+    }
+
+    // LD r16, n16
+    if (lower_nibble == 0x1 && upper_nibble < 0x4) {
+      switch (upper_nibble) {
+        case 0x0:
+          params.reg = BC;
+          break;
+        case 0x1:
+          params.reg = DE;
+          break;
+        case 0x2:
+          params.reg = HL;
+          break;
+        case 0x3:
+          // TODO: LD SP
+          break;
+      }
+
+      params.n16 = Memory_Bus_read_u16(&cpu->bus, cpu->pc + 1);
+    }
+
+    // LD (r16), A
+    if (lower_nibble == 0x2 && upper_nibble < 0x4) {
+      switch (upper_nibble) {
+        case 0x0:
+          params.n16 = CPU_get_combo_reg_value_by_name(cpu, BC);
+          break;
+        case 0x1:
+          params.n16 = CPU_get_combo_reg_value_by_name(cpu, DE);
+          break;
+        case 0x2:
+          // HL+
+          params.n16 = CPU_get_combo_reg_value_by_name(cpu, HL) + 1;
+          break;
+        case 0x3:
+          // HL-
+          params.n16 = CPU_get_combo_reg_value_by_name(cpu, HL) - 1;
+          break;
+      }
+
+      params.n8 = CPU_get_reg_value_by_name(cpu, A);
+      params.load_into_n16 = 1;
+    }
+
+    // LD A, (a16)
+    if (ix_byte == 0xFA) {
+      uint16_t address = Memory_Bus_read_u16(&cpu->bus, cpu->pc + 1);
+
+      params.reg = A;
+      params.n8 = Memory_Bus_read_u8(&cpu->bus, address);
+    }
+
+    // LD (a16), A
+    if (ix_byte == 0xEA) {
+      uint16_t address = Memory_Bus_read_u16(&cpu->bus, cpu->pc + 1);
+
+      params.n16 = address;
+      params.n8 = CPU_get_reg_value_by_name(cpu, A);
+      params.load_into_n16 = 1;
+    }
+
+    // LD A, (C)
+    if (ix_byte == 0xF2) {
+      uint16_t address = 0xFF + CPU_get_reg_value_by_name(cpu, C);
+
+      params.n8 = Memory_Bus_read_u8(&cpu->bus, address);
+      params.reg = A;
+    }
+
+    // LD (C), A
+    if (ix_byte == 0xE2) {
+      uint16_t address = 0xFF + CPU_get_reg_value_by_name(cpu, C);
+
+      params.n16 = address;
+      params.n8 = CPU_get_reg_value_by_name(cpu, A);
+      params.load_into_n16 = 1;
+    }
+
+    // LDH A, (a8)
+    if (ix_byte == 0xF0) {
+      uint16_t address = 0xFF + Memory_Bus_read_u8(&cpu->bus, cpu->pc + 1);
+
+      // TODO: Do we want to just set the value into n8?
+      params.n8 = Memory_Bus_read_u8(&cpu->bus, address);
+      params.reg = A;
+    }
+
+    // LDH (a8), A
+    if (ix_byte == 0xF0) {
+      uint16_t address = 0xFF + Memory_Bus_read_u8(&cpu->bus, cpu->pc + 1);
+
+      params.n16 = address;
+      params.n8 = CPU_get_reg_value_by_name(cpu, A);
+      params.load_into_n16 = 1;
+    }
+
+    // LD SP, n16
+    if (ix_byte == 0x31) {
+      params.n16 = Memory_Bus_read_u16(&cpu->bus, cpu->pc + 1);
+      params.load_into_sp = 1;
+    }
+
+    // LD SP, HL
+    if (ix_byte == 0xF9) {
+      params.n16 = CPU_get_combo_reg_value_by_name(cpu, HL);
+      params.load_into_sp = 1;
+    }
+
+    // LD HL, SP + r8
+    if (ix_byte == 0xF8) {
+      params.reg = HL;
+      params.n16 = cpu->sp + Memory_Bus_read_r8(&cpu->bus, cpu->pc + 1);
+      // TODO: Set HC and C bits based on overflows!
+    }
+
+    // TODO: LD (a16), SP
+    if (ix_byte == 0x08) {
+    }
+
+    // TODO: cont
   }
 
   switch (ix) {
@@ -864,7 +1235,7 @@ CPU_OP_Params CPU_OP_Params_from_by_ix_byte(CPU *cpu, CPU_Instruction ix, uint8_
     case CP:
     // For instructions expecting d8 input, read it if necessary
       if (upper_nibble >= 0xC) {
-        params.n8 = Memory_Bus_read_bytes(&cpu->bus, cpu->pc + 1);
+        params.n8 = Memory_Bus_read_u8(&cpu->bus, cpu->pc + 1);
         break;
       }
     // CB Prefix instructions
@@ -964,24 +1335,31 @@ CPU_OP_Params CPU_OP_Params_from_by_ix_byte(CPU *cpu, CPU_Instruction ix, uint8_
           break;
       }
     case JP:
+      // if it's a jump ix, read the 16 bit value
+      // 0xE9 = jp HL, so skip reading data if it's that one
+      if (ix_byte != 0xE9) {
+        // 0xE9 == JP HL
+        params.n16 = Memory_Bus_read_u16(&cpu->bus, cpu->pc+1);
+      }
       switch (ix_byte) {
         case 0xC3:
+          // JP r16
           params.n8 = 1;
           break;
         case 0xC2:
-          // NZ
+          // JP NZ
           params.n8 = !Registers_get_zero_flag(&cpu->registers);
           break;
         case 0xD2:
-          // NC
+          // JP NC
           params.n8 = !Registers_get_carry_flag(&cpu->registers);
           break;
         case 0xCA:
-          // Z
+          // JP Z
           params.n8 = Registers_get_zero_flag(&cpu->registers);
           break;
         case 0xDA:
-          // C
+          // JP C
           params.n8 = Registers_get_carry_flag(&cpu->registers);
           break;
         case 0xE9:
@@ -1024,19 +1402,37 @@ CPU_OP_Params CPU_OP_Params_from_by_ix_byte(CPU *cpu, CPU_Instruction ix, uint8_
 }
 
 uint8_t CPU_step(CPU *cpu) {
-  uint8_t ix_byte = Memory_Bus_read_bytes(&cpu->bus, cpu->pc);
+  uint8_t ix_byte = Memory_Bus_read_u8(&cpu->bus, cpu->pc);
   CPU_Instruction ix = CPU_Instruction_from_ix_byte(cpu, ix_byte);
-  CPU_OP_Params params = CPU_OP_Params_from_by_ix_byte(cpu, ix, ix_byte);
+  CPU_OP_Params params = CPU_OP_Params_by_ix_byte(cpu, ix, ix_byte);
 
-  uint8_t res = CPU_execute(cpu, ix, params);
+    uint8_t res = CPU_execute(cpu, ix, params);
 
-  // TODO: check if gba really terminates execution on reaching 0xFFFF
-  // or if the execution wraps around to 0x0
-  if(res || cpu->pc == 0xFFFF) {
+    // TODO: check if gb really terminates execution on reaching 0xFFFF
+    // or if the execution wraps around to 0x0
+    if(res || cpu->pc == 0xFFFF) {
     return 1;
   }
 
-  (cpu->pc)++; // TODO: check if we need to step more than one ix forward!
+  // Increment program counter
+  // TODO: Handle pc incrementing for LD instructions
+  if (ix == JP || ix == JR) {
+    // Ignore for jump ixs
+  } else if (
+      ix_byte == 0xCB 
+      || (((ix_byte & 0x0F) == 0x6 || (ix_byte & 0x0F) == 0xE) && ((ix_byte & 0xF0) < 0x4 || (ix_byte & 0xF0) > 0xB))
+      ) {
+    // Skip over second byte of 2 byte instructions
+    // Or the data of instructions that take n8 as data
+    (cpu->pc) += 2;
+  } else if ((ix_byte & 0x0F) == 0x1 && ((ix_byte & 0xF0) < 0x4)) {
+    // Skip over two bytes of instructions that take an n16 input
+    (cpu->pc) += 3;
+  } else {
+    // For all other instructions, move to the next byte
+    (cpu->pc)++;
+  }
+
   return 0;
 }
 

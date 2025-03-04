@@ -52,3 +52,7 @@ uint8_t Registers_get_carry_flag(Registers* reg) {
   return (reg->f & 0b00010000) >> 4;
 }
 
+uint8_t Registers_is_16_bit_register(Register_Name reg_name) {
+  return (reg_name == AF || reg_name == BC || reg_name == DE || reg_name == HL);
+}
+

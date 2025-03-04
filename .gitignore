@@ -1,3 +1,4 @@
 *.x
 *.exe
 build/*
+.ccls-cache/*

@@ -8,14 +8,13 @@
 #define CLEAR_ALL_BITS 0x0000 
 
 typedef struct Registers {
-  // Accumulator
-  uint8_t a;
+  uint8_t a; // Accumulator
   uint8_t b;
   uint8_t c;
   uint8_t d;
   uint8_t e;
-  // Flag rgister
-  // zero subtraction half-carry carry 0000
+  // Flag register
+  // Broken up into individual bits: zero (Z) subtraction (S) half-carry (HC) carry (C) 0000
   uint8_t f;
   uint8_t h;
   uint8_t l;
@@ -37,9 +36,11 @@ uint16_t Registers_get_hl(Registers*);
 void Registers_set_hl(Registers*, uint16_t);
 
 // Manipulation of flags register
-uint8_t Registers_get_zero_flag(Registers* reg);
-uint8_t Registers_get_sub_flag(Registers* reg);
-uint8_t Registers_get_h_carry_flag(Registers* reg);
-uint8_t Registers_get_carry_flag(Registers* reg);
+uint8_t Registers_get_zero_flag(Registers*);
+uint8_t Registers_get_sub_flag(Registers*);
+uint8_t Registers_get_h_carry_flag(Registers*);
+uint8_t Registers_get_carry_flag(Registers*);
+
+uint8_t Registers_is_16_bit_register(Register_Name);
 
 #endif /* !GB_REGISTERS_H */
