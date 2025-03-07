@@ -24,7 +24,7 @@ typedef enum CPU_Instruction {
   RRA, RLA, RRCA, RLCA, CPL, BIT, RES, SET,
   RR, RL, RRC, RLC, SRL, SRA, SLA, SWAP,
   JP, JR, LD, PUSH, POP, CALL, RET,
-  NOP, STOP
+  NOP, STOP, HALT
 } CPU_Instruction;
 
 /**
@@ -46,6 +46,7 @@ typedef struct CPU {
   Registers registers;
   uint16_t pc; // program counter
   uint16_t sp; // stack pointer
+  uint8_t is_halted;
   Memory_Bus bus;
 } CPU;
 
@@ -132,6 +133,8 @@ void CPU_call(CPU*, uint8_t, uint16_t);
 void CPU_ret(CPU*, uint8_t);
 
 void CPU_ld(CPU*, Register_Name, uint8_t, uint16_t, uint8_t, uint8_t);
+
+void CPU_halt(CPU*);
 
 // utility function kinda
 uint8_t CPU_execute(CPU*, CPU_Instruction, CPU_OP_Params);

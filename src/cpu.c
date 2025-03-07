@@ -702,6 +702,10 @@ void CPU_ret(CPU *cpu, uint8_t n8) {
   CPU_jp(cpu, ret_addr, 1);
 }
 
+void CPU_halt(CPU *cpu) {
+  cpu->is_halted = 1;
+}
+
 void CPU_ld(
     CPU* cpu,
     Register_Name reg,
@@ -851,6 +855,10 @@ uint8_t CPU_execute(CPU *cpu, CPU_Instruction ix, CPU_OP_Params params) {
     case RET:
       CPU_ret(cpu, params.n8);
       break;
+    case HALT:
+      CPU_halt(cpu);
+      break;
+    // FIXME: This isn't accurate
     case STOP:
       return 1;
     case NOP:
@@ -1095,6 +1103,8 @@ CPU_Instruction CPU_Instruction_from_ix_byte(CPU *cpu, uint8_t byte) {
     case 0xD8:
     case 0xC9:
       return RET;
+    case 0x76:
+      return HALT;
     default:
       // LD range 0x40 to 0x7F (skipping HALT)
       if (
@@ -1625,6 +1635,11 @@ uint8_t CPU_step(CPU *cpu) {
 void CPU_run(CPU *cpu, uint8_t dump) {
   uint8_t ret_signal;
   while (cpu->pc <= 0xFFFF) {
+    if (cpu->is_halted) {
+      printf("CPU Halted, press <Enter> to continue execution\n");
+      getchar();
+    }
+
     if (dump) {
       CPU_dump(cpu);
     }
