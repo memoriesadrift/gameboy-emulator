@@ -608,6 +608,83 @@ void CPU_pop(CPU *cpu, Register_Name reg) {
   cpu->sp +=2;
 }
 
+void CPU_call(CPU *cpu, uint8_t n8, uint16_t n16) {
+  // Assume CALL by default
+  uint8_t should_call = 1;
+  switch (n8) {
+    // NZ
+    case 0xC4:
+      should_call = !Registers_get_zero_flag(&cpu->registers);
+      break;
+    // NC
+    case 0xD4:
+      should_call = !Registers_get_carry_flag(&cpu->registers);
+      break;
+    // Z
+    case 0xCC:
+      should_call = Registers_get_zero_flag(&cpu->registers);
+      break;
+    // C
+    case 0xDC:
+      should_call = Registers_get_carry_flag(&cpu->registers);
+      break;
+  }
+
+  if (!should_call) {
+    // Skip the n16 param
+    cpu->pc += 3;
+    return;
+  }
+  // Push the pc we would go to if we wouldn't be calling onto the stack
+  uint16_t next_pc_if_no_jump = Memory_Bus_read_u16(&cpu->bus, cpu->pc+3);
+  uint8_t lo = (uint8_t)(next_pc_if_no_jump & CLEAR_HIGH_BITS);
+  uint8_t hi = (uint8_t)((next_pc_if_no_jump & CLEAR_LOW_BITS) >> 8);
+
+  cpu->sp--;
+  cpu->bus.memory[cpu->sp] = hi;
+  cpu->sp--;
+  cpu->bus.memory[cpu->sp] = lo;
+
+  CPU_jp(cpu, n16, 1);
+}
+
+void CPU_ret(CPU *cpu, uint8_t n8) {
+  // Assume RET by default
+  uint8_t should_ret = 1;
+  switch (n8) {
+    // NZ
+    case 0xC0:
+      should_ret = !Registers_get_zero_flag(&cpu->registers);
+      break;
+    // NC
+    case 0xD0:
+      should_ret = !Registers_get_carry_flag(&cpu->registers);
+      break;
+    // Z
+    case 0xC8:
+      should_ret = Registers_get_zero_flag(&cpu->registers);
+      break;
+    // C
+    case 0xD8:
+      should_ret = Registers_get_carry_flag(&cpu->registers);
+      break;
+  }
+
+  if (!should_ret) {
+    cpu->pc++;
+    return;
+  }
+
+  // Pop the return value off the stack
+  uint8_t lo = Memory_Bus_read_u8(&cpu->bus, cpu->sp);
+  uint8_t hi = Memory_Bus_read_u8(&cpu->bus, cpu->sp + 1);
+  cpu->sp += 2;
+
+  uint16_t ret_addr = hi + (((uint16_t)lo) << 8);
+
+  CPU_jp(cpu, ret_addr, 1);
+}
+
 void CPU_ld(
     CPU* cpu,
     Register_Name reg,
@@ -756,6 +833,12 @@ uint8_t CPU_execute(CPU *cpu, CPU_Instruction ix, CPU_OP_Params params) {
       break;
     case POP:
       CPU_pop(cpu, params.reg);
+      break;
+    case CALL:
+      CPU_call(cpu, params.n8, params.n16);
+      break;
+    case RET:
+      CPU_ret(cpu, params.n8);
       break;
     case STOP:
       return 1;
@@ -989,6 +1072,18 @@ CPU_Instruction CPU_Instruction_from_ix_byte(CPU *cpu, uint8_t byte) {
     case 0xE1:
     case 0xF1:
       return POP;
+    case 0xC4:
+    case 0xD4:
+    case 0xCD:
+    case 0xCC:
+    case 0xDD:
+      return CALL;
+    case 0xC0:
+    case 0xD0:
+    case 0xC8:
+    case 0xD8:
+    case 0xC9:
+      return RET;
     default:
       // LD range 0x40 to 0x7F (skipping HALT)
       if (
@@ -1464,6 +1559,15 @@ CPU_OP_Params CPU_OP_Params_by_ix_byte(CPU *cpu, CPU_Instruction ix, uint8_t ix_
           break;
       }
       break;
+      // For CALL and RET: forward the ix_byte so that the function can decide
+      // whether it's a Z/C/NZ/NC ix.
+    case CALL:
+       params.n16 = Memory_Bus_read_u16(&cpu->bus, cpu->pc+1);
+       params.n8 = ix_byte;
+       break;
+    case RET:
+       params.n8 = ix_byte;
+       break;
     default:
       break;
   }
@@ -1485,8 +1589,10 @@ uint8_t CPU_step(CPU *cpu) {
 
   // Increment program counter
   // TODO: Handle pc incrementing for LD instructions
-  if (ix == JP || ix == JR) {
+  if (ix == JP || ix == JR || ix == CALL || ix == RET) {
     // Ignore for jump ixs
+    // and call / ret as they may jump
+    // They handle their own pc manipulation
   } else if (
       ix_byte == 0xCB 
       || (((ix_byte & 0x0F) == 0x6 || (ix_byte & 0x0F) == 0xE) && ((ix_byte & 0xF0) < 0x4 || (ix_byte & 0xF0) > 0xB))

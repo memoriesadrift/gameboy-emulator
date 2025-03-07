@@ -23,7 +23,7 @@ typedef enum CPU_Instruction {
   AND, OR, XOR, CP, INC, DEC, CCF, SCF,
   RRA, RLA, RRCA, RLCA, CPL, BIT, RES, SET,
   RR, RL, RRC, RLC, SRL, SRA, SLA, SWAP,
-  JP, JR, LD, PUSH, POP,
+  JP, JR, LD, PUSH, POP, CALL, RET,
   NOP, STOP
 } CPU_Instruction;
 
@@ -131,6 +131,10 @@ void CPU_jr(CPU*, int8_t, uint8_t);
 void CPU_push(CPU*, Register_Name);
 
 void CPU_pop(CPU*, Register_Name);
+
+void CPU_call(CPU*, uint8_t, uint16_t);
+
+void CPU_ret(CPU*, uint8_t);
 
 void CPU_ld(CPU*, Register_Name, uint8_t, uint16_t, uint8_t, uint8_t);
 
