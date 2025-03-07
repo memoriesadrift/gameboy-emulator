@@ -63,26 +63,21 @@ void CPU_set_combo_reg_value_by_name(CPU*, Register_Name, uint16_t);
 // utility function
 void CPU_set_flags(CPU*, uint8_t, uint8_t, uint8_t, uint8_t);
 
-void CPU_add(CPU*, Register_Name);
+void CPU_add(CPU*, Register_Name, uint8_t);
 
-void CPU_adc(CPU*, Register_Name);
+void CPU_adc(CPU*, Register_Name, uint8_t);
 
-void CPU_addhl(CPU*, Register_Name);
+void CPU_sub(CPU*, Register_Name, uint8_t);
 
-void CPU_sub(CPU*, Register_Name);
+void CPU_sbc(CPU*, Register_Name, uint8_t);
 
-void CPU_sbc(CPU*, Register_Name);
+void CPU_cp(CPU*, Register_Name, uint8_t);
 
-// Unnecessary?
-void CPU_subhl(CPU*, Register_Name);
+void CPU_and(CPU*, Register_Name, uint8_t);
 
-void CPU_cp(CPU*, Register_Name);
+void CPU_or(CPU*, Register_Name, uint8_t);
 
-void CPU_and(CPU*, Register_Name);
-
-void CPU_or(CPU*, Register_Name);
-
-void CPU_xor(CPU*, Register_Name);
+void CPU_xor(CPU*, Register_Name, uint8_t);
 
 void CPU_inc(CPU*, Register_Name);
 

@@ -161,8 +161,15 @@ void CPU_set_flags(CPU *cpu, uint8_t zero, uint8_t subtract, uint8_t half_carry,
   cpu->registers.f = (zero << 7 | subtract << 6 | half_carry << 5 | carry << 4) | (curr & 0x0F);
 }
 
-void CPU_add(CPU *cpu, Register_Name target) {
-  uint8_t to_add = CPU_get_reg_value_by_name(cpu, target);
+void CPU_add(CPU *cpu, Register_Name target, uint8_t n8) {
+  uint8_t to_add = n8;
+  if (target != 0) {
+    to_add = CPU_get_reg_value_by_name(cpu, target);
+  }
+  // For HL, use the byte pointed to by HL for the value
+  if (target == HL) {
+    to_add = Memory_Bus_read_u8(&cpu->bus, to_add);
+  }
   uint8_t reg_a = CPU_get_reg_value_by_name(cpu, A);
 
   uint8_t did_overflow = 0;
@@ -180,8 +187,15 @@ void CPU_add(CPU *cpu, Register_Name target) {
   CPU_set_flags(cpu, res == 0, 0, (((reg_a & 0xF) + (to_add & 0xF)) & 0x10) == 0x10, did_overflow);
 }
 
-void CPU_adc(CPU *cpu, Register_Name target) {
-  uint8_t to_add = CPU_get_reg_value_by_name(cpu, target);
+void CPU_adc(CPU *cpu, Register_Name target, uint8_t n8) {
+  uint8_t to_add = n8;
+  if (target != 0) {
+    to_add = CPU_get_reg_value_by_name(cpu, target);
+  }
+  // For HL, use the byte pointed to by HL for the value
+  if (target == HL) {
+    to_add = Memory_Bus_read_u8(&cpu->bus, to_add);
+  }
   uint8_t carry = Registers_get_carry_flag(&cpu->registers);
   uint8_t reg_a = CPU_get_reg_value_by_name(cpu, A);
 
@@ -201,27 +215,15 @@ void CPU_adc(CPU *cpu, Register_Name target) {
   CPU_set_flags(cpu, res == 0, 0, (((reg_a & 0xF) + (to_add & 0xF) + (carry & 0xF)) & 0x10) == 0x10, did_overflow);
 }
 
-void CPU_addhl(CPU *cpu, Register_Name target) {
-  uint16_t to_add = CPU_get_reg_value_by_name(cpu, target);
-  uint16_t reg_a = CPU_get_reg_value_by_name(cpu, HL);
-
-  uint8_t did_overflow = 0;
-  uint16_t res = 0;
-
-  // Overflow check
-  if (to_add > 0 && reg_a > UINT16_MAX - to_add) {
-    did_overflow = 1;
-    res = to_add - (UINT16_MAX - reg_a);
-  } else {
-    res = to_add + reg_a;
+void CPU_sub(CPU *cpu, Register_Name target, uint8_t n8) {
+  uint8_t to_sub = n8;
+  if (target != 0) {
+    to_sub = CPU_get_reg_value_by_name(cpu, target);
   }
-
-  Registers_set_hl(&cpu->registers, res);
-  CPU_set_flags(cpu, res == 0, 0, (res & 0xF) + (to_add & 0xF) > 0xF, did_overflow);
-}
-
-void CPU_sub(CPU *cpu, Register_Name target) {
-  uint8_t to_sub = CPU_get_reg_value_by_name(cpu, target);
+  // For HL, use the byte pointed to by HL for the value
+  if (target == HL) {
+    to_sub = Memory_Bus_read_u8(&cpu->bus, to_sub);
+  }
   uint8_t reg_a = CPU_get_reg_value_by_name(cpu, A);
 
   uint8_t res = 0;
@@ -237,8 +239,15 @@ void CPU_sub(CPU *cpu, Register_Name target) {
   CPU_set_flags(cpu, res == 0, 1, (((reg_a & 0xF) - (to_sub & 0xF)) & 0x10) == 0x10, to_sub > reg_a);
 }
 
-void CPU_sbc(CPU *cpu, Register_Name target) {
-  uint8_t to_sub = CPU_get_reg_value_by_name(cpu, target);
+void CPU_sbc(CPU *cpu, Register_Name target, uint8_t n8) {
+  uint8_t to_sub = n8;
+  if (target != 0) {
+    to_sub = CPU_get_reg_value_by_name(cpu, target);
+  }
+  // For HL, use the byte pointed to by HL for the value
+  if (target == HL) {
+    to_sub = Memory_Bus_read_u8(&cpu->bus, to_sub);
+  }
   uint8_t carry = (CPU_get_reg_value_by_name(cpu, F) & 0b00010000) >> 4;
   uint8_t reg_a = CPU_get_reg_value_by_name(cpu, A);
 
@@ -257,28 +266,15 @@ void CPU_sbc(CPU *cpu, Register_Name target) {
   CPU_set_flags(cpu, res == 0, 1, (((reg_a & 0xF) - (to_sub & 0xF) - (carry & 0xF)) & 0x10) == 0x10, did_underflow);
 }
 
-// Unnecessary?
-void CPU_subhl(CPU *cpu, Register_Name target) {
-  uint16_t to_sub = CPU_get_reg_value_by_name(cpu, target);
-  uint16_t reg_hl = CPU_get_reg_value_by_name(cpu, HL);
-
-  uint8_t did_underflow = 0;
-  uint16_t res = 0;
-
-  // Overflow check
-  if (to_sub > 0 && reg_hl < to_sub) {
-    did_underflow = 1;
-    res = UINT8_MAX - (to_sub - reg_hl);
-  } else {
-    res = reg_hl - to_sub;
+void CPU_cp(CPU *cpu, Register_Name target, uint8_t n8) {
+  uint8_t to_sub = n8;
+  if (target != 0) {
+    to_sub = CPU_get_reg_value_by_name(cpu, target);
   }
-
-  Registers_set_hl(&cpu->registers, res);
-  CPU_set_flags(cpu, res == 0, 1, (res & 0xF) + (to_sub & 0xF) > 0xF, did_underflow);
-}
-
-void CPU_cp(CPU *cpu, Register_Name target) {
-  uint8_t to_sub = CPU_get_reg_value_by_name(cpu, target);
+  // For HL, use the byte pointed to by HL for the value
+  if (target == HL) {
+    to_sub = Memory_Bus_read_u8(&cpu->bus, to_sub);
+  }
   uint8_t reg_a = CPU_get_reg_value_by_name(cpu, A);
 
   uint8_t did_underflow = 0;
@@ -292,11 +288,18 @@ void CPU_cp(CPU *cpu, Register_Name target) {
     res = reg_a - to_sub;
   }
 
-  CPU_set_flags(cpu, res == 0, 1, (res & 0xF) + (to_sub & 0xF) > 0xF, did_underflow);
+  CPU_set_flags(cpu, res == 0, 1, (((reg_a & 0xF) - (to_sub & 0xF)) & 0x10) == 0x10, did_underflow);
 }
 
-void CPU_and(CPU *cpu, Register_Name target) {
-  uint8_t other = CPU_get_reg_value_by_name(cpu, target);
+void CPU_and(CPU *cpu, Register_Name target, uint8_t n8) {
+  uint8_t other = n8;
+  if (target != 0) {
+    other = CPU_get_reg_value_by_name(cpu, target);
+  }
+  // For HL, use the byte pointed to by HL for the value
+  if (target == HL) {
+    other = Memory_Bus_read_u8(&cpu->bus, other);
+  }
   uint8_t reg_a = CPU_get_reg_value_by_name(cpu, target);
 
   uint8_t res = reg_a & other;
@@ -305,8 +308,15 @@ void CPU_and(CPU *cpu, Register_Name target) {
   CPU_set_flags(cpu, res == 0, 0, 1, 0);
 }
 
-void CPU_or(CPU *cpu, Register_Name target) {
-  uint8_t other = CPU_get_reg_value_by_name(cpu, target);
+void CPU_or(CPU *cpu, Register_Name target, uint8_t n8) {
+  uint8_t other = n8;
+  if (target != 0) {
+    other = CPU_get_reg_value_by_name(cpu, target);
+  }
+  // For HL, use the byte pointed to by HL for the value
+  if (target == HL) {
+    other = Memory_Bus_read_u8(&cpu->bus, other);
+  }
   uint8_t reg_a = CPU_get_reg_value_by_name(cpu, target);
 
   uint8_t res = reg_a | other;
@@ -315,8 +325,15 @@ void CPU_or(CPU *cpu, Register_Name target) {
   CPU_set_flags(cpu, res == 0, 0, 0, 0);
 }
 
-void CPU_xor(CPU *cpu, Register_Name target) {
-  uint8_t other = CPU_get_reg_value_by_name(cpu, target);
+void CPU_xor(CPU *cpu, Register_Name target, uint8_t n8) {
+  uint8_t other = n8;
+  if (target != 0) {
+    other = CPU_get_reg_value_by_name(cpu, target);
+  }
+  // For HL, use the byte pointed to by HL for the value
+  if (target == HL) {
+    other = Memory_Bus_read_u8(&cpu->bus, other);
+  }
   uint8_t reg_a = CPU_get_reg_value_by_name(cpu, target);
 
   uint8_t res = reg_a ^ other;
@@ -729,34 +746,28 @@ void CPU_ld(
 uint8_t CPU_execute(CPU *cpu, CPU_Instruction ix, CPU_OP_Params params) {
   switch (ix) {
     case ADD:
-      CPU_add(cpu, params.reg);
+      CPU_add(cpu, params.reg, params.n8);
       break;
     case ADC:
-      CPU_adc(cpu, params.reg);
-      break;
-    case ADDHL:
-      CPU_addhl(cpu, params.reg);
+      CPU_adc(cpu, params.reg, params.n8);
       break;
     case SUB:
-      CPU_sub(cpu, params.reg);
+      CPU_sub(cpu, params.reg, params.n8);
       break;
     case SBC:
-      CPU_sub(cpu, params.reg);
-      break;
-    case SUBHL:
-      CPU_sub(cpu, params.reg);
+      CPU_sub(cpu, params.reg, params.n8);
       break;
     case AND:
-      CPU_and(cpu, params.reg);
+      CPU_and(cpu, params.reg, params.n8);
       break;
     case OR:
-      CPU_or(cpu, params.reg);
+      CPU_or(cpu, params.reg, params.n8);
       break;
     case XOR:
-      CPU_xor(cpu, params.reg);
+      CPU_xor(cpu, params.reg, params.n8);
       break;
     case CP:
-      CPU_cp(cpu, params.reg);
+      CPU_cp(cpu, params.reg, params.n8);
       break;
     case INC:
       CPU_inc(cpu, params.reg);

@@ -20,7 +20,10 @@ typedef struct Registers {
   uint8_t l;
 } Registers;
 
-typedef enum Register_Name { A, B, C, D, E, F, H, L, AF, BC, DE, HL } Register_Name;
+typedef enum Register_Name {
+  A = 1, B = 2, C = 3, D = 4, E = 5, F = 6, H = 7, L = 8, 
+  AF = 9, BC = 10, DE = 11, HL = 12
+} Register_Name;
 
 // Manipulation of two registers at once
 uint16_t Registers_get_bc(Registers*);
