@@ -4,14 +4,10 @@
 #include <stdint.h>
 #include <stdio.h> // Just for debug
 
-// TODO [16.4.23]: Check for correctness of half carry setting in subtraction routines, incl. CPU_cp()
 // TODO [23.4.23]: Check for correctness of flag setting in bit routines (BIT)
 // TODO [23.4.23]: Refactor RRA, RLA, RRCA, RLCA to use RR, RL, RRC, RLC for DRY code
-// TODO [30.4.23]: Make CPU_step load next byte when necessary and ONLY once per step
-// TODO [30.4.23]: STOP just stops execution atm, should it do something else?
-// TODO [7.5.23]: Check for correctness of overflows in ADD, ADC, SUB, SBC etc.
 // TODO [6.7.23]: Implement LD SP instructions
-// TODO [18.1.25]: Implement HALT, EI, DI, rework STOP
+// TODO [18.1.25]: Implement EI, DI, rework STOP
 
 void CPU_dump(CPU *cpu) {
     printf("==== CPU DUMP ====\n");
