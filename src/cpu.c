@@ -1,5 +1,6 @@
 #include "cpu.h"
 #include "registers.h"
+#include <_types/_uint16_t.h>
 #include <stdint.h>
 #include <stdio.h> // Just for debug
 
@@ -572,6 +573,41 @@ void CPU_jr(CPU *cpu, int8_t by, uint8_t jump) {
   }
 }
 
+void CPU_push(CPU *cpu, Register_Name reg) {
+  uint16_t value = CPU_get_combo_reg_value_by_name(cpu, reg);
+  uint8_t lo = (uint8_t)(value & CLEAR_HIGH_BITS);
+  uint8_t hi = (uint8_t)((value & CLEAR_LOW_BITS) >> 8);
+
+  cpu->sp--;
+  cpu->bus.memory[cpu->sp] = hi;
+  cpu->sp--;
+  cpu->bus.memory[cpu->sp] = lo;
+}
+
+void CPU_pop(CPU *cpu, Register_Name reg) {
+  uint8_t lo = Memory_Bus_read_u8(&cpu->bus, cpu->sp);
+  uint8_t hi = Memory_Bus_read_u8(&cpu->bus, cpu->sp + 1);
+
+  switch (reg) {
+    case BC:
+      cpu->registers.b = lo;
+      cpu->registers.c = hi;
+    case DE:
+      cpu->registers.d = lo;
+      cpu->registers.e = hi;
+    case HL:
+      cpu->registers.h = lo;
+      cpu->registers.l = hi;
+    case AF:
+      cpu->registers.a = lo;
+      cpu->registers.f = hi;
+    default:
+        break;
+  }
+
+  cpu->sp +=2;
+}
+
 void CPU_ld(
     CPU* cpu,
     Register_Name reg,
@@ -714,6 +750,12 @@ uint8_t CPU_execute(CPU *cpu, CPU_Instruction ix, CPU_OP_Params params) {
       break;
     case JR:
       CPU_jr(cpu, params.r8, params.n8);
+      break;
+    case PUSH:
+      CPU_push(cpu, params.reg);
+      break;
+    case POP:
+      CPU_pop(cpu, params.reg);
       break;
     case STOP:
       return 1;
@@ -937,6 +979,16 @@ CPU_Instruction CPU_Instruction_from_ix_byte(CPU *cpu, uint8_t byte) {
     case 0xF9:
     case 0xFA:
       return LD;
+    case 0xC5:
+    case 0xD5:
+    case 0xE5:
+    case 0xF5:
+      return PUSH;
+    case 0xC1:
+    case 0xD1:
+    case 0xE1:
+    case 0xF1:
+      return POP;
     default:
       // LD range 0x40 to 0x7F (skipping HALT)
       if (
@@ -1395,6 +1447,23 @@ CPU_OP_Params CPU_OP_Params_by_ix_byte(CPU *cpu, CPU_Instruction ix, uint8_t ix_
         default:
           break;
       }
+    case PUSH:
+    case POP:
+      switch (lower_nibble) {
+        case C:
+          params.reg = BC;
+          break;
+        case D:
+          params.reg = DE;
+          break;
+        case E:
+          params.reg = HL;
+          break;
+        case F:
+          params.reg = AF;
+          break;
+      }
+      break;
     default:
       break;
   }
